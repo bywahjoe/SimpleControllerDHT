@@ -1,3 +1,5 @@
+#include "key.h"
+
 #define readURL "https://iot.bywahjoe.com/post.php"
 #define pushURL "https://iot.bywahjoe.com/post.php"
 
@@ -9,6 +11,6 @@
 #define myDHT2 17
 #define relayPin 23
 
-const char* ssid = "MieAyam";
-const char* pass = "-------";
+const char* ssid = yourSSID ;
+const char* pass = yourPASS ;
 String APIKEY = "sendIP4";

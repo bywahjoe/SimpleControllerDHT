@@ -4,6 +4,7 @@
 */
 
 #include "pinku.h"
+#include "DHT.h"
 #include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -15,6 +16,7 @@
 #define relayOFF digitalWrite(relayPin,LOW)
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
+DHT dht1(myDHT1, DHT11);
 
 int threshold = 25; //Set Default in 25
 int newThreshold = 0;
@@ -48,19 +50,20 @@ byte charLimit[8] =
 void setup() {
   Serial.begin(115200);
   //Pin Setting
-  pinMode(buttonU, INPUT_PULLUP);
-  pinMode(buttonD, INPUT_PULLUP);
-  pinMode(buttonOK, INPUT_PULLUP);
+  pinMode(buttonPinU, INPUT_PULLUP);
+  pinMode(buttonPinD, INPUT_PULLUP);
+  pinMode(buttonPinOK, INPUT_PULLUP);
   pinMode(relayPin, OUTPUT);
-
+  dht1.begin();
+  
   //LCD Starting
   lcd.init();
   lcd.createChar(0, charTemp);
-
+  lcd.createChar(1, charLimit);
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("WiFI Connecting..");
+  lcd.print("WiFI Connect..");
   lcd.setCursor(0, 1);
   lcd.print(ssid);
   WiFi.begin(ssid, pass);
@@ -73,15 +76,19 @@ void setup() {
   readDataWeb();
   nows = millis();
   before = millis();
+//  while(1){
+//    Serial.print(!buttonU); Serial.print(!buttonD); Serial.println(!buttonOK);
+//    }
 }
 
 void loop() {
   nows = millis();
-
+  viewDisplay();
   //Read DHT
   myTemp1 = getTemp1();
   myTemp2 = getTemp2();
-
+  viewDisplay();
+  
   //
   if (!buttonOK) {
     newThreshold = threshold;
@@ -109,7 +116,7 @@ void loop() {
   }
 }
 float getTemp1() {
-  float val;
+  float val=dht1.readTemperature();;
   return val;
 }
 float getTemp2() {
@@ -124,7 +131,7 @@ void viewDisplay() {
   lcd.write(byte(0)); lcd.print(myTemp1);
 
   lcd.setCursor(12, 0);
-  lcd.write(byte(0)); lcd.print(threshold);
+  lcd.write(byte(1)); lcd.print(threshold);
   delay(1000);
 
 }
@@ -166,22 +173,23 @@ void adjust() {
     //0-50
     //Up
     if (!buttonU) {
-      lcd.clear();
-      delay(150);
+      lcd.setCursor(10, 0);
+      lcd.print("   ");
+      delay(1000);
       if ((newThreshold + 1) < 50)newThreshold = newThreshold + 1;
     }
 
     //Down
     if (!buttonD) {
-      lcd.clear();
-      delay(150);
+      lcd.setCursor(10, 0);
+      lcd.print("   ");
+      delay(1000);
       if ((newThreshold - 1) > 0)newThreshold = newThreshold - 1;
     }
 
     //Ok-Confirm
     if (!buttonOK) {
-      lcd.clear();
-      lcd.setCursor(10, 0);
+      lcd.setCursor(13, 0);
       lcd.print("OK");
       delay(150);
       sendDataWeb();
