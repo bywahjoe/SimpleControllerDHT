@@ -17,13 +17,15 @@
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 DHT dht1(myDHT1, DHT11);
+DHT dht2(myDHT2, DHT11);
 
 int threshold = 25; //Set Default in 25
 int newThreshold = 0;
 float myTemp1, myTemp2;
 
 //Millis Check Web Server
-unsigned long interval = 15000, before = 0, nows = 0;
+unsigned long interval = 15000, conInterval = 30000, before = 0, nows = 0, statusCon = 0;
+bool errCon = false;
 
 byte charTemp[8] =
 {
@@ -55,6 +57,7 @@ void setup() {
   pinMode(buttonPinOK, INPUT_PULLUP);
   pinMode(relayPin, OUTPUT);
   dht1.begin();
+  dht2.begin();
   
   //LCD Starting
   lcd.init();
@@ -76,19 +79,20 @@ void setup() {
   readDataWeb();
   nows = millis();
   before = millis();
-//  while(1){
-//    Serial.print(!buttonU); Serial.print(!buttonD); Serial.println(!buttonOK);
-//    }
+  statusCon = millis();
+  //  while(1){
+  //    Serial.print(!buttonU); Serial.print(!buttonD); Serial.println(!buttonOK);
+  //    }
 }
 
 void loop() {
   nows = millis();
-  viewDisplay();
+  
   //Read DHT
   myTemp1 = getTemp1();
   myTemp2 = getTemp2();
   viewDisplay();
-  
+
   //
   if (!buttonOK) {
     newThreshold = threshold;
@@ -111,16 +115,28 @@ void loop() {
 
   //Check Web Interval
   if (nows - before > interval) {
+
     readDataWeb();  //GetThresholdWeb
     before = millis();
   }
+  
+  //Message Con Error
+  if (nows - statusCon > conInterval) {
+    if (WiFi.status() != WL_CONNECTED) {
+      errCon = true;
+    } else {
+      errCon = false;
+    }
+    statusCon = millis();
+  }
+
 }
 float getTemp1() {
-  float val=dht1.readTemperature();;
+  float val = dht1.readTemperature();;
   return val;
 }
 float getTemp2() {
-  float val;
+  float val = dht2.readTemperature();
   return val;
 }
 void viewDisplay() {
@@ -128,12 +144,17 @@ void viewDisplay() {
   lcd.setCursor(0, 0);
   lcd.write(byte(0)); lcd.print(myTemp1);
   lcd.setCursor(0, 1);
-  lcd.write(byte(0)); lcd.print(myTemp1);
+  lcd.write(byte(0)); lcd.print(myTemp2);
 
   lcd.setCursor(12, 0);
   lcd.write(byte(1)); lcd.print(threshold);
+  lcd.setCursor(12, 1);
+  if (errCon) {
+    lcd.print("!ERR");
+  } else {
+    lcd.print("    ");
+  }
   delay(1000);
-
 }
 void readDataWeb() {
   //This read from last threshold API
