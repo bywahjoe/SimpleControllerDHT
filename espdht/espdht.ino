@@ -23,8 +23,11 @@ int threshold = 25; //Set Default in 25
 int newThreshold = 0;
 float myTemp1, myTemp2;
 
-//Millis Check Web Server
-unsigned long interval = 15000, conInterval = 30000, before = 0, nows = 0, statusCon = 0;
+//Millis Setting
+unsigned long nows = 0;
+unsigned long intervalSendDHT = 15000, beforeDHT = 0;
+unsigned long intervalFromWEB = 25000, beforeWEB = 0;
+unsigned long intervalCON = 30000, beforeCON = 0;
 bool errCon = false;
 
 byte charTemp[8] =
@@ -58,7 +61,7 @@ void setup() {
   pinMode(relayPin, OUTPUT);
   dht1.begin();
   dht2.begin();
-  
+
   //LCD Starting
   lcd.init();
   lcd.createChar(0, charTemp);
@@ -76,18 +79,19 @@ void setup() {
   };
   lcd.clear();
 
-  readDataWeb();
+  getWEBThreshold();
+
+  //Millis Hit
   nows = millis();
-  before = millis();
-  statusCon = millis();
-  //  while(1){
-  //    Serial.print(!buttonU); Serial.print(!buttonD); Serial.println(!buttonOK);
-  //    }
+  beforeDHT = millis();
+  beforeWEB = millis();
+  beforeCON = millis();
+
 }
 
 void loop() {
   nows = millis();
-  
+
   //Read DHT
   myTemp1 = getTemp1();
   myTemp2 = getTemp2();
@@ -101,8 +105,9 @@ void loop() {
     lcd.print("Threshold:");
     lcd.setCursor(0, 1);
     lcd.print("UP - DOWN - OK");
-    delay(1000);
+    delay(500);
     adjust();
+    resetMillis();
   }
 
   //Relay Trigger
@@ -113,21 +118,26 @@ void loop() {
     relayOFF;
   }
 
-  //Check Web Interval
-  if (nows - before > interval) {
-
-    readDataWeb();  //GetThresholdWeb
-    before = millis();
+  //DHT Send
+  if (nows - beforeDHT > intervalSendDHT) {
+    sendDevDHT();
+    beforeDHT = millis();
   }
-  
+
+  //Read WEB Threshold
+  if (nows - beforeWEB > intervalFromWEB) {
+    getWEBThreshold();  //GetThresholdWeb
+    beforeWEB = millis();
+  }
+
   //Message Con Error
-  if (nows - statusCon > conInterval) {
+  if (nows - beforeCON > intervalCON) {
     if (WiFi.status() != WL_CONNECTED) {
       errCon = true;
     } else {
       errCon = false;
     }
-    statusCon = millis();
+    beforeCON = millis();
   }
 
 }
@@ -138,6 +148,12 @@ float getTemp1() {
 float getTemp2() {
   float val = dht2.readTemperature();
   return val;
+}
+void resetMillis(){
+  beforeDHT = millis();
+  beforeWEB = millis();
+  beforeCON = millis();
+  
 }
 void viewDisplay() {
   lcd.clear();
@@ -156,23 +172,57 @@ void viewDisplay() {
   }
   delay(1000);
 }
-void readDataWeb() {
+void getWEBThreshold() {
   //This read from last threshold API
-
+  HTTPClient readhttp;
+  Serial.println("Read WEB THR");
+  String myURL=String(readWebThresholdURL)+"?dev="+devID;
+  readhttp.begin(myURL);
+  int httpResponseCode = readhttp.GET();
+  
+  if (httpResponseCode > 0) {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    String payload = readhttp.getString();
+    Serial.print(payload);Serial.println(" -- NEW THRESHOLD"); 
+    threshold=payload.toInt();
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+  readhttp.end();
 }
-void sendDataWeb() {
-  String d1 = String(threshold);
-  //This push data new threshold to WEB
+void sendDevDHT() {
+  String dht1 = String(myTemp1);
+  String dht2 = String(myTemp2);
+  Serial.print("Sending DHT:");Serial.print(dht1);Serial.print(" | ");Serial.println(dht2);
   HTTPClient postWeb;
-
-  postWeb.begin(pushURL);
+  postWeb.begin(sendDevDHTURL);
   postWeb.addHeader("Content-Type", "application/x-www-form-urlencoded");
-
-  String dataku = "apiKEY=" + APIKEY + "&d1=" + d1;
-  Serial.println(dataku);
+  String dataku = "dev=" + devID + "&dht1=" + dht1 + "&dht2=" + dht2;
 
   int httpResponseCode = postWeb.POST(dataku);
+  //  UNCOMENT TO CEK ERROR
+  //     if (httpResponseCode>0) {
+  //        Serial.print("HTTP Response code: ");
+  //        Serial.println(httpResponseCode);
+  //      }
+  //      else {
+  //        Serial.print("Error code: ");
+  //        Serial.println(httpResponseCode);
+  //      }
+  postWeb.end();
+}
+void sendDevThreshold() {
+  String thr = String(threshold);
+  Serial.print("Sending Threshold:");Serial.println(thr);
+  HTTPClient postWeb;
+  postWeb.begin(sendDevThresholdURL);
+  postWeb.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  String dataku = "dev=" + devID + "&thr=" + thr;
 
+  int httpResponseCode = postWeb.POST(dataku);
   //  UNCOMENT TO CEK ERROR
   //     if (httpResponseCode>0) {
   //        Serial.print("HTTP Response code: ");
@@ -197,7 +247,7 @@ void adjust() {
       lcd.setCursor(10, 0);
       lcd.print("   ");
       delay(1000);
-      if ((newThreshold + 1) < 50)newThreshold = newThreshold + 1;
+      if ((newThreshold + 1) <= tMax)newThreshold = newThreshold + 1;
     }
 
     //Down
@@ -205,7 +255,7 @@ void adjust() {
       lcd.setCursor(10, 0);
       lcd.print("   ");
       delay(1000);
-      if ((newThreshold - 1) > 0)newThreshold = newThreshold - 1;
+      if ((newThreshold - 1) >= tMin)newThreshold = newThreshold - 1;
     }
 
     //Ok-Confirm
@@ -213,8 +263,8 @@ void adjust() {
       lcd.setCursor(13, 0);
       lcd.print("OK");
       delay(150);
-      sendDataWeb();
       threshold = newThreshold;
+      sendDevThreshold();
       main = false;
     }
   }
