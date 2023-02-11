@@ -10,10 +10,10 @@ String devID=yourDeviceID;
 #define sendDevDHTURL "https://iot.partnerkita.com/setDHT.php"
 #define readWebThresholdURL "https://iot.partnerkita.com/getThreshold.php"
 
-#define buttonPinU 32 //Up
-#define buttonPinD 33
+#define buttonPinU 33 //Up
+#define buttonPinD 32
 #define buttonPinOK 25
 
-#define myDHT1 16
-#define myDHT2 17
-#define relayPin 23
+#define myDHT1 17
+#define myDHT2 16
+#define relayPin 18

@@ -29,6 +29,7 @@ unsigned long intervalSendDHT = 15000, beforeDHT = 0;
 unsigned long intervalFromWEB = 25000, beforeWEB = 0;
 unsigned long intervalCON = 30000, beforeCON = 0;
 bool errCon = false;
+bool isRelayON = false;
 
 byte charTemp[8] =
 {
@@ -78,9 +79,12 @@ void setup() {
     Serial.print(".");
   };
   lcd.clear();
-
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Read Config.");
   getWEBThreshold();
-
+  lcd.clear();
+  
   //Millis Hit
   nows = millis();
   beforeDHT = millis();
@@ -104,8 +108,8 @@ void loop() {
     lcd.setCursor(0, 0);
     lcd.print("Threshold:");
     lcd.setCursor(0, 1);
-    lcd.print("UP - DOWN - OK");
-    delay(500);
+    lcd.print("MODE - UP - DOWN");
+    while (!buttonOK)delay(50);
     adjust();
     resetMillis();
   }
@@ -113,9 +117,11 @@ void loop() {
   //Relay Trigger
   if (myTemp1 > threshold || myTemp2 > threshold) {
     relayON;
+    isRelayON = true;
   }
   else {
     relayOFF;
+    isRelayON = false;
   }
 
   //DHT Send
@@ -149,11 +155,11 @@ float getTemp2() {
   float val = dht2.readTemperature();
   return val;
 }
-void resetMillis(){
+void resetMillis() {
   beforeDHT = millis();
   beforeWEB = millis();
   beforeCON = millis();
-  
+
 }
 void viewDisplay() {
   lcd.clear();
@@ -162,8 +168,21 @@ void viewDisplay() {
   lcd.setCursor(0, 1);
   lcd.write(byte(0)); lcd.print(myTemp2);
 
+  //Status Relay
+  lcd.setCursor(10, 0);  
+  
+  if (isRelayON) {
+    lcd.print("*");
+  }
+  else {
+    lcd.print(" ");
+  };
+
+  //Threshold
   lcd.setCursor(12, 0);
   lcd.write(byte(1)); lcd.print(threshold);
+
+  //Con Error
   lcd.setCursor(12, 1);
   if (errCon) {
     lcd.print("!ERR");
@@ -176,16 +195,16 @@ void getWEBThreshold() {
   //This read from last threshold API
   HTTPClient readhttp;
   Serial.println("Read WEB THR");
-  String myURL=String(readWebThresholdURL)+"?dev="+devID;
+  String myURL = String(readWebThresholdURL) + "?dev=" + devID;
   readhttp.begin(myURL);
   int httpResponseCode = readhttp.GET();
-  
+
   if (httpResponseCode > 0) {
     Serial.print("HTTP Response code: ");
     Serial.println(httpResponseCode);
     String payload = readhttp.getString();
-    Serial.print(payload);Serial.println(" -- NEW THRESHOLD"); 
-    threshold=payload.toInt();
+    Serial.print(payload); Serial.println(" -- NEW THRESHOLD");
+    threshold = payload.toInt();
   }
   else {
     Serial.print("Error code: ");
@@ -196,7 +215,7 @@ void getWEBThreshold() {
 void sendDevDHT() {
   String dht1 = String(myTemp1);
   String dht2 = String(myTemp2);
-  Serial.print("Sending DHT:");Serial.print(dht1);Serial.print(" | ");Serial.println(dht2);
+  Serial.print("Sending DHT:"); Serial.print(dht1); Serial.print(" | "); Serial.println(dht2);
   HTTPClient postWeb;
   postWeb.begin(sendDevDHTURL);
   postWeb.addHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -216,7 +235,7 @@ void sendDevDHT() {
 }
 void sendDevThreshold() {
   String thr = String(threshold);
-  Serial.print("Sending Threshold:");Serial.println(thr);
+  Serial.print("Sending Threshold:"); Serial.println(thr);
   HTTPClient postWeb;
   postWeb.begin(sendDevThresholdURL);
   postWeb.addHeader("Content-Type", "application/x-www-form-urlencoded");
