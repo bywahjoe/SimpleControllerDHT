@@ -8,6 +8,7 @@
 #include <LiquidCrystal_I2C.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
 
 #define buttonU digitalRead(buttonPinU)
 #define buttonD digitalRead(buttonPinD)
@@ -15,11 +16,16 @@
 #define relayON digitalWrite(relayPin,HIGH)
 #define relayOFF digitalWrite(relayPin,LOW)
 
+StaticJsonDocument<200> doc;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 DHT dht1(myDHT1, DHT11);
 DHT dht2(myDHT2, DHT11);
 
+//Threshold
 int threshold = 25; //Set Default in 25
+int minDHT1 = -10,maxDHT1 = 50; 
+int minDHT2 = -20,maxDHT2 = 40; 
+
 int newThreshold = 0;
 float myTemp1, myTemp2;
 
@@ -53,6 +59,17 @@ byte charLimit[8] =
   0b00110,
   0b01100
 };
+byte charBlock[8] =
+{
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111
+};
 void setup() {
   Serial.begin(115200);
   //Pin Setting
@@ -67,6 +84,8 @@ void setup() {
   lcd.init();
   lcd.createChar(0, charTemp);
   lcd.createChar(1, charLimit);
+  lcd.createChar(2, charBlock);
+
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -79,12 +98,13 @@ void setup() {
     Serial.print(".");
   };
   lcd.clear();
-  
+//  parseJSON();
+//  while(1){}///On Going Tes JSON
   lcd.setCursor(0, 0);
   lcd.print("Read Config.");
   getWEBThreshold();
   lcd.clear();
-  
+
   //Millis Hit
   nows = millis();
   beforeDHT = millis();
@@ -104,22 +124,18 @@ void loop() {
   //
   if (!buttonOK) {
     newThreshold = threshold;
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Threshold:");
-    lcd.setCursor(0, 1);
-    lcd.print("MODE - UP - DOWN");
-    while (!buttonOK)delay(50);
-    adjust();
+    menu();
     resetMillis();
+    //    adjust();
+
   }
 
   //Relay Trigger
-  if (myTemp1 > threshold || myTemp2 > threshold) {
+  if (myTemp1 > maxDHT1 || myTemp2 > maxDHT2) {
     relayON;
     isRelayON = true;
   }
-  else {
+  else if (myTemp1 < minDHT1 || myTemp2 < minDHT2) {
     relayOFF;
     isRelayON = false;
   }
@@ -155,7 +171,170 @@ float getTemp2() {
   float val = dht2.readTemperature();
   return val;
 }
+void menu() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("LOADING MENU...");
+  while (!buttonOK)delay(50);
+  delay(1000);
+
+  lcd.clear();
+  lcd.setCursor(0, 1);
+  lcd.print("<<--  MENU  ++>>");
+  bool play = true;
+  bool selected = false;
+  int counter = 1;
+  int menuMin = 1, menuMax = 5;
+  unsigned long timer, lastTimer, blinkTimer = 300;
+  while (play) {
+    Serial.print("Counter:"); Serial.println(counter);
+    if (!buttonU) {
+      if (counter < menuMax) {
+        counter = counter + 1;
+        while (!buttonU);
+        clearLine(0);
+      }
+    }
+    if (!buttonD) {
+      if (counter > menuMin) {
+        counter = counter - 1;
+        while (!buttonD);
+        clearLine(0);
+      }
+    }
+    if (!buttonOK) {
+      selected = true;
+      while (!buttonOK);
+      timer = millis();
+      lastTimer = millis();
+    }
+    switch (counter) {
+      case 1: //RelayOFF MIN DHT1
+        lcd.setCursor(0, 0);
+        lcd.print("S1"); lcd.write(byte(2)); lcd.print("Set OFF <");
+        lcd.setCursor(13, 0);
+        lcd.print(minDHT1);
+        while (selected) {
+          timer = millis();
+          lcd.setCursor(13, 0);
+          lcd.print(minDHT1);
+          if (timer - lastTimer >= blinkTimer) {
+            lcd.setCursor(13, 0);
+            lcd.print("   ");
+            delay(25);
+            lastTimer = millis();
+          }
+          if (!buttonU) {
+            while (!buttonU);
+            if (minDHT1 > tMin && minDHT1 < tMax)minDHT1 = minDHT1 + 1;
+          }
+          if (!buttonD) {
+            while (!buttonD);
+            if (minDHT1 > tMin && minDHT1 < tMax)minDHT1 = minDHT1 - 1;
+          }
+          if (!buttonOK) {
+            saveOK(1);
+            play = false; selected = false;
+          }
+        };
+        break;
+      case 2:
+        lcd.setCursor(0, 0);
+        lcd.print("S1"); lcd.write(byte(2)); lcd.print("Set ONN >");
+        lcd.setCursor(13, 0);
+        lcd.print(maxDHT1);
+        while (selected) {
+          timer = millis();
+          lcd.setCursor(13, 0);
+          lcd.print(maxDHT1);
+          if (timer - lastTimer >= blinkTimer) {
+            lcd.setCursor(13, 0);
+            lcd.print("   ");
+            delay(25);
+            lastTimer = millis();
+          }
+          if (!buttonU) {
+            while (!buttonU);
+            if (maxDHT1 > tMin && maxDHT1 < tMax)maxDHT1 = maxDHT1 + 1;
+          }
+          if (!buttonD) {
+            while (!buttonD);
+            if (maxDHT1 > tMin && maxDHT1 < tMax)maxDHT1 = maxDHT1 - 1;
+          }
+          if (!buttonOK) {
+            saveOK(1);
+            play = false; selected = false;
+          }
+        };
+        break;
+      case 3:
+        lcd.setCursor(0, 0);
+        lcd.print("S2"); lcd.write(byte(2)); lcd.print("Set OFF <");
+        lcd.setCursor(13, 0);
+        lcd.print(minDHT2);
+        while (selected) {
+          timer = millis();
+          lcd.setCursor(13, 0);
+          lcd.print(minDHT2);
+          if (timer - lastTimer >= blinkTimer) {
+            lcd.setCursor(13, 0);
+            lcd.print("   ");
+            delay(25);
+            lastTimer = millis();
+          }
+          if (!buttonU) {
+            while (!buttonU);
+            if (minDHT2 > tMin && minDHT2 < tMax)minDHT2 = minDHT2 + 1;
+          }
+          if (!buttonD) {
+            while (!buttonD);
+            if (minDHT2 > tMin && minDHT2 < tMax)minDHT2 = minDHT2 - 1;
+          }
+          if (!buttonOK) {
+            saveOK(1);
+            play = false; selected = false;
+          }
+        };
+        break;
+      case 4:
+        lcd.setCursor(0, 0);
+        lcd.print("S2"); lcd.write(byte(2)); lcd.print("Set ONN >");
+        lcd.setCursor(13, 0);
+        lcd.print(maxDHT2);
+        while (selected) {
+          timer = millis();
+          lcd.setCursor(13, 0);
+          lcd.print(maxDHT2);
+          if (timer - lastTimer >= blinkTimer) {
+            lcd.setCursor(13, 0);
+            lcd.print("   ");
+            delay(25);
+            lastTimer = millis();
+          }
+          if (!buttonU) {
+            while (!buttonU);
+            if (maxDHT2 > tMin && maxDHT2 < tMax)maxDHT2 = maxDHT2 + 1;
+          }
+          if (!buttonD) {
+            while (!buttonD);
+            if (maxDHT2 > tMin && maxDHT2 < tMax)maxDHT2 = maxDHT2 - 1;
+          }
+          if (!buttonOK) {
+            saveOK(1);
+            play = false; selected = false;
+          }
+        };
+        break;
+      case 5:
+        lcd.setCursor(0, 0);
+        lcd.print("BACK TO HOME    ");
+        if (selected)play = false;
+        break;
+    }
+  }
+}
 void resetMillis() {
+  nows=millis();
   beforeDHT = millis();
   beforeWEB = millis();
   beforeCON = millis();
@@ -169,8 +348,8 @@ void viewDisplay() {
   lcd.write(byte(0)); lcd.print(myTemp2);
 
   //Status Relay
-  lcd.setCursor(10, 0);  
-  
+  lcd.setCursor(7, 0);
+
   if (isRelayON) {
     lcd.print("*");
   }
@@ -179,18 +358,58 @@ void viewDisplay() {
   };
 
   //Threshold
-  lcd.setCursor(12, 0);
-  lcd.write(byte(1)); lcd.print(threshold);
+  lcd.setCursor(9, 0); lcd.print(minDHT1);
+  lcd.setCursor(12, 0); lcd.write(byte(1)); lcd.print(maxDHT1);
+
+  lcd.setCursor(9, 1); lcd.print(minDHT2);
+  lcd.setCursor(12, 1); lcd.write(byte(1)); lcd.print(maxDHT2);
+
 
   //Con Error
-  lcd.setCursor(12, 1);
   if (errCon) {
-    lcd.print("!ERR");
-  } else {
-    lcd.print("    ");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("!CONNECTION ERR");
+    lcd.setCursor(0, 1);
+    lcd.print("RESTART DEVICE");
+    while (1);
   }
   delay(1000);
 }
+void parseJSON(){
+  unsigned long oke=millis();
+  HTTPClient readhttp;
+  Serial.println("Read WEB THR");
+  String myURL = "http://arduinojson.org/example.json";
+  readhttp.begin(myURL);
+  int httpResponseCode = readhttp.GET();
+  String payload;
+  if (httpResponseCode > 0) {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    payload = readhttp.getString();
+    Serial.print(payload); Serial.println(" -- NEW THRESHOLD");
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+  readhttp.end();
+
+//  
+  DeserializationError error = deserializeJson(doc, payload);
+
+  // Test if parsing succeeds.
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.f_str());
+    return;
+  };
+  String ok=doc["sensor"];
+  Serial.println(ok);
+  unsigned long ya=millis();
+  Serial.println(ya-oke);
+  }
 void getWEBThreshold() {
   //This read from last threshold API
   HTTPClient readhttp;
@@ -286,5 +505,17 @@ void adjust() {
       sendDevThreshold();
       main = false;
     }
+  }
+}
+void clearLine(int line) {
+  lcd.setCursor(0, line);
+  lcd.print("                ");
+}
+void saveOK(bool newSetting) {
+  lcd.clear();
+  if (newSetting) {
+    lcd.setCursor(0, 0);
+    lcd.print("SAVE CONFIG..");
+    delay(1000);
   }
 }

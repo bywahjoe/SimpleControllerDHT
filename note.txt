@@ -1,0 +1,37 @@
+HT=High Threshold |  > 30
+LT=Low Threshold  |  <-10
+
+IF 	S1>HT || S2>HT = ON
+
+ELSE IF S2<LT || S2<LT = OFF
+
+--WEB
+SET ON
+  S1------- 
+  S2------- 
+  Submit
+SET OFF
+  S1-------
+  S2-------
+  Submit
+---------------------------------
+
+
+//DEVICE
+DISPLAY AWAL
+S1	(OFF) MINS1 | MAXS1 (ON)
+S2	(OFF) MINS2 | MAXS2 (ON)
+
+LOGIC CONFIG SAMPLE
+   VAL	    OFF<TMIN            ON>TMAX
+S1:30       -10 [-----  30 -----]45	|| Relay standby
+S2:-17      -15 [----- -17 -----]51	|| Relay ON
+Final Result: Relay ON
+
+id
+dht1
+mindht1
+maxdht1
+dht2
+mindht2
+maxdht2
