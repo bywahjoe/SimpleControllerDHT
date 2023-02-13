@@ -9,6 +9,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $dev = test_input($_POST["dev"]);
         $dht1 = test_input($_POST["dht1"]);
         $dht2 = test_input($_POST["dht2"]);
+        $humid1 = test_input($_POST["humid1"]);
+        $humid2 = test_input($_POST["humid2"]);
         
         // Create connection
         $conn = new mysqli($servername, $userID, $pass, $database);
@@ -16,7 +18,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($conn->connect_error) {
             die("Connection failed: " . $conn->connect_error);
         } ;
-        $sql="UPDATE myesp SET DHT1='".$dht1."',DHT2='".$dht2."' WHERE DEVICEID='".$dev."'";
+        $sql="UPDATE myesp SET DHT1='".$dht1."',DHT2='".$dht2."',HUMID1='".$humid1."',HUMID2='".$humid2."' WHERE DEVICEID='".$dev."'";
     
         if ($conn->query($sql) === TRUE) {
             echo "New DHT record created successfully";

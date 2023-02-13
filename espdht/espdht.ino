@@ -13,21 +13,21 @@
 #define buttonU digitalRead(buttonPinU)
 #define buttonD digitalRead(buttonPinD)
 #define buttonOK digitalRead(buttonPinOK)
-#define relayON digitalWrite(relayPin,HIGH)
-#define relayOFF digitalWrite(relayPin,LOW)
 
 StaticJsonDocument<200> doc;
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 DHT dht1(myDHT1, DHT11);
 DHT dht2(myDHT2, DHT11);
 
+char relayMode = 'A';
+
 //Threshold
-int threshold = 25; //Set Default in 25
-int minDHT1 = -10,maxDHT1 = 50; 
-int minDHT2 = -20,maxDHT2 = 40; 
+int minDHT1 = -10, maxDHT1 = 50;
+int minDHT2 = -20, maxDHT2 = 40;
 
 int newThreshold = 0;
 float myTemp1, myTemp2;
+int myHumid1, myHumid2;
 
 //Millis Setting
 unsigned long nows = 0;
@@ -70,6 +70,17 @@ byte charBlock[8] =
   0b11111,
   0b11111
 };
+byte charArrow[8] =
+{
+  0b00100,
+  0b01110,
+  0b11111,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100,
+  0b00100
+};
 void setup() {
   Serial.begin(115200);
   //Pin Setting
@@ -85,6 +96,7 @@ void setup() {
   lcd.createChar(0, charTemp);
   lcd.createChar(1, charLimit);
   lcd.createChar(2, charBlock);
+  lcd.createChar(3, charArrow);
 
   lcd.backlight();
   lcd.clear();
@@ -98,8 +110,6 @@ void setup() {
     Serial.print(".");
   };
   lcd.clear();
-//  parseJSON();
-//  while(1){}///On Going Tes JSON
   lcd.setCursor(0, 0);
   lcd.print("Read Config.");
   getWEBThreshold();
@@ -119,26 +129,19 @@ void loop() {
   //Read DHT
   myTemp1 = getTemp1();
   myTemp2 = getTemp2();
+  myHumid1 = getHumid1();
+  myHumid2 = getHumid2();
+
   viewDisplay();
 
   //
   if (!buttonOK) {
-    newThreshold = threshold;
     menu();
     resetMillis();
-    //    adjust();
-
   }
 
   //Relay Trigger
-  if (myTemp1 > maxDHT1 || myTemp2 > maxDHT2) {
-    relayON;
-    isRelayON = true;
-  }
-  else if (myTemp1 < minDHT1 || myTemp2 < minDHT2) {
-    relayOFF;
-    isRelayON = false;
-  }
+  relayTrig(relayMode);
 
   //DHT Send
   if (nows - beforeDHT > intervalSendDHT) {
@@ -161,15 +164,43 @@ void loop() {
     }
     beforeCON = millis();
   }
-
+}
+int getHumid1() {
+  int val = dht1.readHumidity();
+  return val;
+}
+int getHumid2() {
+  int val = dht2.readHumidity();
+  return val;
 }
 float getTemp1() {
-  float val = dht1.readTemperature();;
+  float val = dht1.readTemperature();
   return val;
 }
 float getTemp2() {
   float val = dht2.readTemperature();
   return val;
+}
+void relayON() {
+  digitalWrite(relayPin, HIGH);
+  isRelayON = true;
+}
+void relayOFF() {
+  digitalWrite(relayPin, LOW);
+  isRelayON = false;
+}
+void relayTrig(char option) {
+  switch (option) {
+    case 'A':
+      if (myTemp1 > maxDHT1 || myTemp2 > maxDHT2) relayON();
+      else if (myTemp1 < minDHT1 || myTemp2 < minDHT2)relayOFF();
+      break;
+    case 'B':
+      if (myTemp1 > maxDHT1 || myTemp2 > maxDHT2) relayOFF();
+      else if (myTemp1 < minDHT1 || myTemp2 < minDHT2)relayON();
+      break;
+    default: break;
+  }
 }
 void menu() {
   lcd.clear();
@@ -181,164 +212,157 @@ void menu() {
   lcd.clear();
   lcd.setCursor(0, 1);
   lcd.print("<<--  MENU  ++>>");
-  bool play = true;
-  bool selected = false;
-  int counter = 1;
-  int menuMin = 1, menuMax = 5;
-  unsigned long timer, lastTimer, blinkTimer = 300;
-  while (play) {
-    Serial.print("Counter:"); Serial.println(counter);
+
+  bool selectMenu = true;
+  bool confirmMenu = false;
+  bool setTHR = false;
+  int index = 1;
+  int indexMin = 1, indexMax = 3;
+
+  while (selectMenu) {
     if (!buttonU) {
-      if (counter < menuMax) {
-        counter = counter + 1;
-        while (!buttonU);
-        clearLine(0);
-      }
+      while (!buttonU);
+      if (index >= indexMin && index < indexMax)index = index + 1;
     }
     if (!buttonD) {
-      if (counter > menuMin) {
-        counter = counter - 1;
-        while (!buttonD);
-        clearLine(0);
-      }
+      while (!buttonD);
+      if (index > indexMin && index <= indexMax)index = index - 1;
     }
     if (!buttonOK) {
-      selected = true;
       while (!buttonOK);
-      timer = millis();
-      lastTimer = millis();
+      confirmMenu = true;
     }
-    switch (counter) {
-      case 1: //RelayOFF MIN DHT1
+    switch (index) {
+      case 1:
         lcd.setCursor(0, 0);
-        lcd.print("S1"); lcd.write(byte(2)); lcd.print("Set OFF <");
-        lcd.setCursor(13, 0);
-        lcd.print(minDHT1);
-        while (selected) {
-          timer = millis();
-          lcd.setCursor(13, 0);
-          lcd.print(minDHT1);
-          if (timer - lastTimer >= blinkTimer) {
-            lcd.setCursor(13, 0);
-            lcd.print("   ");
-            delay(25);
-            lastTimer = millis();
-          }
-          if (!buttonU) {
-            while (!buttonU);
-            if (minDHT1 > tMin && minDHT1 < tMax)minDHT1 = minDHT1 + 1;
-          }
-          if (!buttonD) {
-            while (!buttonD);
-            if (minDHT1 > tMin && minDHT1 < tMax)minDHT1 = minDHT1 - 1;
-          }
-          if (!buttonOK) {
-            saveOK(1);
-            play = false; selected = false;
-          }
-        };
+        lcd.print("MA"); lcd.write(byte(2)); lcd.print(" HIGH"); lcd.write(byte(3)); lcd.print(" = ON ");
+        if (confirmMenu) {
+          relayMode = 'A';
+          setTHR = true;
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("SET: MODE[A]");
+          delay(2000);
+          lcd.clear();
+        }
         break;
       case 2:
         lcd.setCursor(0, 0);
-        lcd.print("S1"); lcd.write(byte(2)); lcd.print("Set ONN >");
-        lcd.setCursor(13, 0);
-        lcd.print(maxDHT1);
-        while (selected) {
-          timer = millis();
-          lcd.setCursor(13, 0);
-          lcd.print(maxDHT1);
-          if (timer - lastTimer >= blinkTimer) {
-            lcd.setCursor(13, 0);
-            lcd.print("   ");
-            delay(25);
-            lastTimer = millis();
-          }
-          if (!buttonU) {
-            while (!buttonU);
-            if (maxDHT1 > tMin && maxDHT1 < tMax)maxDHT1 = maxDHT1 + 1;
-          }
-          if (!buttonD) {
-            while (!buttonD);
-            if (maxDHT1 > tMin && maxDHT1 < tMax)maxDHT1 = maxDHT1 - 1;
-          }
-          if (!buttonOK) {
-            saveOK(1);
-            play = false; selected = false;
-          }
-        };
+        lcd.print("MB"); lcd.write(byte(2)); lcd.print(" HIGH"); lcd.write(byte(3)); lcd.print(" = OFF");
+        if (confirmMenu) {
+          relayMode = 'B';
+          setTHR = true;
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("SET: MODE[B]");
+          delay(2000);
+          lcd.clear();
+        }
         break;
       case 3:
         lcd.setCursor(0, 0);
-        lcd.print("S2"); lcd.write(byte(2)); lcd.print("Set OFF <");
+        lcd.print("BACK TO HOME    ");
+        if (confirmMenu)selectMenu = false;
+        break;
+    }
+
+    //Continue to Config
+    if (setTHR) {
+      configTHR(setTHR);
+      selectMenu = false;
+    }
+  }
+}
+void configTHR(bool setTHR) {
+  lcd.setCursor(0, 0);
+  lcd.print("S1"); lcd.write(byte(2)); lcd.print("L1:"); lcd.print(minDHT1);
+  lcd.setCursor(10, 0);
+  lcd.print("H1:"); lcd.print(maxDHT1);
+
+  lcd.setCursor(0, 1);
+  lcd.print("S2"); lcd.write(byte(2)); lcd.print("L2:"); lcd.print(minDHT2);
+  lcd.setCursor(10, 1);
+  lcd.print("H2:"); lcd.print(maxDHT2);
+  unsigned long timer = millis(), lastTimer = millis(), blinkTimer = 300;
+  int start = 1;
+  while (setTHR) {
+    timer = millis();
+    switch (start) {
+      case 1:
+        lcd.setCursor(6, 0);
+        lcd.print(minDHT1);
+        lcd.setCursor(6, 0);
+        if (!buttonU) {
+          while (!buttonU);
+          if (minDHT1 >= tMin && minDHT1 < tMax)minDHT1 = minDHT1 + 1;
+        }
+        if (!buttonD) {
+          while (!buttonD);
+          if (minDHT1 > tMin && minDHT1 <= tMax)minDHT1 = minDHT1 - 1;
+        };
+        break;
+      case 2:
         lcd.setCursor(13, 0);
+        lcd.print(maxDHT1);
+        lcd.setCursor(13, 0);
+        if (!buttonU) {
+          while (!buttonU);
+          if (maxDHT1 >= tMin && maxDHT1 < tMax)maxDHT1 = maxDHT1 + 1;
+        }
+        if (!buttonD) {
+          while (!buttonD);
+          if (maxDHT1 > tMin && maxDHT1 <= tMax)maxDHT1 = maxDHT1 - 1;
+        };
+        break;
+      case 3:
+        lcd.setCursor(6, 1);
         lcd.print(minDHT2);
-        while (selected) {
-          timer = millis();
-          lcd.setCursor(13, 0);
-          lcd.print(minDHT2);
-          if (timer - lastTimer >= blinkTimer) {
-            lcd.setCursor(13, 0);
-            lcd.print("   ");
-            delay(25);
-            lastTimer = millis();
-          }
-          if (!buttonU) {
-            while (!buttonU);
-            if (minDHT2 > tMin && minDHT2 < tMax)minDHT2 = minDHT2 + 1;
-          }
-          if (!buttonD) {
-            while (!buttonD);
-            if (minDHT2 > tMin && minDHT2 < tMax)minDHT2 = minDHT2 - 1;
-          }
-          if (!buttonOK) {
-            saveOK(1);
-            play = false; selected = false;
-          }
+        lcd.setCursor(6, 1);
+        if (!buttonU) {
+          while (!buttonU);
+          if (minDHT2 >= tMin && minDHT2 < tMax)minDHT2 = minDHT2 + 1;
+        }
+        if (!buttonD) {
+          while (!buttonD);
+          if (minDHT2 > tMin && minDHT2 <= tMax)minDHT2 = minDHT2 - 1;
         };
         break;
       case 4:
-        lcd.setCursor(0, 0);
-        lcd.print("S2"); lcd.write(byte(2)); lcd.print("Set ONN >");
-        lcd.setCursor(13, 0);
+        lcd.setCursor(13, 1);
         lcd.print(maxDHT2);
-        while (selected) {
-          timer = millis();
-          lcd.setCursor(13, 0);
-          lcd.print(maxDHT2);
-          if (timer - lastTimer >= blinkTimer) {
-            lcd.setCursor(13, 0);
-            lcd.print("   ");
-            delay(25);
-            lastTimer = millis();
-          }
-          if (!buttonU) {
-            while (!buttonU);
-            if (maxDHT2 > tMin && maxDHT2 < tMax)maxDHT2 = maxDHT2 + 1;
-          }
-          if (!buttonD) {
-            while (!buttonD);
-            if (maxDHT2 > tMin && maxDHT2 < tMax)maxDHT2 = maxDHT2 - 1;
-          }
-          if (!buttonOK) {
-            saveOK(1);
-            play = false; selected = false;
-          }
+        lcd.setCursor(13, 1);
+        if (!buttonU) {
+          while (!buttonU);
+          if (maxDHT2 >= tMin && maxDHT2 < tMax)maxDHT2 = maxDHT2 + 1;
+        }
+        if (!buttonD) {
+          while (!buttonD);
+          if (maxDHT2 > tMin && maxDHT2 <= tMax)maxDHT2 = maxDHT2 - 1;
         };
         break;
       case 5:
-        lcd.setCursor(0, 0);
-        lcd.print("BACK TO HOME    ");
-        if (selected)play = false;
+        setTHR = false;
+        saveOK();
         break;
+    };
+    if (!buttonOK) {
+      while (!buttonOK)delay(50);
+      start = start + 1;
+      delay(1000);
+    } else {
+      if (timer - lastTimer >= blinkTimer) {
+        lcd.print("   ");
+        delay(25);
+        lastTimer = millis();
+      }
     }
   }
 }
 void resetMillis() {
-  nows=millis();
+  nows = millis();
   beforeDHT = millis();
   beforeWEB = millis();
   beforeCON = millis();
-
 }
 void viewDisplay() {
   lcd.clear();
@@ -357,13 +381,16 @@ void viewDisplay() {
     lcd.print(" ");
   };
 
+  //Status MODE Relay
+  lcd.setCursor(7, 1);
+  lcd.print(relayMode);
+
   //Threshold
   lcd.setCursor(9, 0); lcd.print(minDHT1);
   lcd.setCursor(12, 0); lcd.write(byte(1)); lcd.print(maxDHT1);
 
   lcd.setCursor(9, 1); lcd.print(minDHT2);
   lcd.setCursor(12, 1); lcd.write(byte(1)); lcd.print(maxDHT2);
-
 
   //Con Error
   if (errCon) {
@@ -376,11 +403,11 @@ void viewDisplay() {
   }
   delay(1000);
 }
-void parseJSON(){
-  unsigned long oke=millis();
+void getWEBThreshold() {
   HTTPClient readhttp;
   Serial.println("Read WEB THR");
-  String myURL = "http://arduinojson.org/example.json";
+  String myURL = String(readWebThresholdURL) + "?dev=" + devID;
+
   readhttp.begin(myURL);
   int httpResponseCode = readhttp.GET();
   String payload;
@@ -395,8 +422,7 @@ void parseJSON(){
     Serial.println(httpResponseCode);
   }
   readhttp.end();
-
-//  
+  //
   DeserializationError error = deserializeJson(doc, payload);
 
   // Test if parsing succeeds.
@@ -405,40 +431,26 @@ void parseJSON(){
     Serial.println(error.f_str());
     return;
   };
-  String ok=doc["sensor"];
-  Serial.println(ok);
-  unsigned long ya=millis();
-  Serial.println(ya-oke);
-  }
-void getWEBThreshold() {
-  //This read from last threshold API
-  HTTPClient readhttp;
-  Serial.println("Read WEB THR");
-  String myURL = String(readWebThresholdURL) + "?dev=" + devID;
-  readhttp.begin(myURL);
-  int httpResponseCode = readhttp.GET();
-
-  if (httpResponseCode > 0) {
-    Serial.print("HTTP Response code: ");
-    Serial.println(httpResponseCode);
-    String payload = readhttp.getString();
-    Serial.print(payload); Serial.println(" -- NEW THRESHOLD");
-    threshold = payload.toInt();
-  }
-  else {
-    Serial.print("Error code: ");
-    Serial.println(httpResponseCode);
-  }
-  readhttp.end();
+  String ok = doc["mode"];
+  relayMode = ok[0];
+  minDHT1 = doc["dht1"]["minDHT1"];
+  maxDHT1 = doc["dht1"]["maxDHT1"];
+  minDHT2 = doc["dht2"]["minDHT2"];
+  maxDHT2 = doc["dht2"]["maxDHT2"];
 }
 void sendDevDHT() {
   String dht1 = String(myTemp1);
   String dht2 = String(myTemp2);
+  String humid1 = String(myHumid1);
+  String humid2 = String(myHumid2);
+
   Serial.print("Sending DHT:"); Serial.print(dht1); Serial.print(" | "); Serial.println(dht2);
+  Serial.print("Sending HUMID:"); Serial.print(humid1); Serial.print(" | "); Serial.println(humid2);
+
   HTTPClient postWeb;
   postWeb.begin(sendDevDHTURL);
   postWeb.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  String dataku = "dev=" + devID + "&dht1=" + dht1 + "&dht2=" + dht2;
+  String dataku = "dev=" + devID + "&dht1=" + dht1 + "&dht2=" + dht2 + "&humid1=" + humid1 + "&humid2=" + humid2;
 
   int httpResponseCode = postWeb.POST(dataku);
   //  UNCOMENT TO CEK ERROR
@@ -453,12 +465,23 @@ void sendDevDHT() {
   postWeb.end();
 }
 void sendDevThreshold() {
-  String thr = String(threshold);
-  Serial.print("Sending Threshold:"); Serial.println(thr);
+  String md = String(relayMode);
+  String min1 = String(minDHT1);
+  String max1 = String(maxDHT1);
+  String min2 = String(minDHT2);
+  String max2 = String(maxDHT2);
+
+  Serial.print("Sending Threshold:");
+  Serial.print(md); Serial.print(",");
+  Serial.print(min1); Serial.print(",");
+  Serial.print(max1); Serial.print(",");
+  Serial.print(min2); Serial.print(",");
+  Serial.println(max2);
+
   HTTPClient postWeb;
   postWeb.begin(sendDevThresholdURL);
   postWeb.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  String dataku = "dev=" + devID + "&thr=" + thr;
+  String dataku = "dev=" + devID + "&mode=" + md + "&min1=" + min1 + "&max1=" + max1 + "&min2=" + min2 + "&max2=" + max2;
 
   int httpResponseCode = postWeb.POST(dataku);
   //  UNCOMENT TO CEK ERROR
@@ -472,50 +495,14 @@ void sendDevThreshold() {
   //      }
   postWeb.end();
 }
-void adjust() {
-  bool main = true;
-
-  while (main) {
-    lcd.setCursor(10, 0);
-    lcd.print(newThreshold);
-
-    //0-50
-    //Up
-    if (!buttonU) {
-      lcd.setCursor(10, 0);
-      lcd.print("   ");
-      delay(1000);
-      if ((newThreshold + 1) <= tMax)newThreshold = newThreshold + 1;
-    }
-
-    //Down
-    if (!buttonD) {
-      lcd.setCursor(10, 0);
-      lcd.print("   ");
-      delay(1000);
-      if ((newThreshold - 1) >= tMin)newThreshold = newThreshold - 1;
-    }
-
-    //Ok-Confirm
-    if (!buttonOK) {
-      lcd.setCursor(13, 0);
-      lcd.print("OK");
-      delay(150);
-      threshold = newThreshold;
-      sendDevThreshold();
-      main = false;
-    }
-  }
-}
 void clearLine(int line) {
   lcd.setCursor(0, line);
   lcd.print("                ");
 }
-void saveOK(bool newSetting) {
+void saveOK() {
   lcd.clear();
-  if (newSetting) {
-    lcd.setCursor(0, 0);
-    lcd.print("SAVE CONFIG..");
-    delay(1000);
-  }
+  lcd.setCursor(0, 0);
+  lcd.print("SAVE CONFIG..");
+  sendDevThreshold();
+  delay(1000);
 }
