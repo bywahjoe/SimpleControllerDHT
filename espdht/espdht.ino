@@ -285,6 +285,7 @@ void menu() {
     if (setTHR) {
       configTHR(setTHR);
       selectMenu = false;
+      relayOFF();
     }
   }
 }
