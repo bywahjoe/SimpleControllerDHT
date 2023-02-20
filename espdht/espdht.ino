@@ -22,8 +22,8 @@ DHT dht2(myDHT2, DHT11);
 char relayMode = 'A';
 
 //Threshold
-int minDHT1 = -10, maxDHT1 = 50;
-int minDHT2 = -20, maxDHT2 = 40;
+int minDHT1 = 10, maxDHT1 = 15;
+int minDHT2 = 10, maxDHT2 = 15;
 
 int newThreshold = 0;
 float myTemp1, myTemp2;
@@ -34,8 +34,10 @@ unsigned long nows = 0;
 unsigned long intervalSendDHT = 15000, beforeDHT = 0;
 unsigned long intervalFromWEB = 25000, beforeWEB = 0;
 unsigned long intervalCON = 30000, beforeCON = 0;
+
 bool errCon = false;
 bool isRelayON = false;
+bool useWifi = false;
 
 byte charTemp[8] =
 {
@@ -101,18 +103,28 @@ void setup() {
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("WiFI Connect..");
-  lcd.setCursor(0, 1);
-  lcd.print(ssid);
-  WiFi.begin(ssid, pass);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  };
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Read Config.");
-  getWEBThreshold();
+
+  if (useWifi) {
+    lcd.print("WiFI Connect..");
+    lcd.setCursor(0, 1);
+    lcd.print(ssid);
+    WiFi.begin(ssid, pass);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    };
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Read Config.");
+    getWEBThreshold();
+  }
+  else {
+    lcd.print("Bypass WiFi");
+    lcd.setCursor(0, 1);
+    lcd.print("Reset-Config.");
+    delay(2000);
+  }
+
   lcd.clear();
 
   //Millis Hit
@@ -143,26 +155,29 @@ void loop() {
   //Relay Trigger
   relayTrig(relayMode);
 
-  //DHT Send
-  if (nows - beforeDHT > intervalSendDHT) {
-    sendDevDHT();
-    beforeDHT = millis();
-  }
-
-  //Read WEB Threshold
-  if (nows - beforeWEB > intervalFromWEB) {
-    getWEBThreshold();  //GetThresholdWeb
-    beforeWEB = millis();
-  }
-
-  //Message Con Error
-  if (nows - beforeCON > intervalCON) {
-    if (WiFi.status() != WL_CONNECTED) {
-      errCon = true;
-    } else {
-      errCon = false;
+  if (useWifi) {
+    
+    //DHT Send
+    if (nows - beforeDHT > intervalSendDHT) {
+      sendDevDHT();
+      beforeDHT = millis();
     }
-    beforeCON = millis();
+
+    //Read WEB Threshold
+    if (nows - beforeWEB > intervalFromWEB) {
+      getWEBThreshold();  //GetThresholdWeb
+      beforeWEB = millis();
+    }
+
+    //Message Con Error
+    if (nows - beforeCON > intervalCON) {
+      if (WiFi.status() != WL_CONNECTED) {
+        errCon = true;
+      } else {
+        errCon = false;
+      }
+      beforeCON = millis();
+    }
   }
 }
 int getHumid1() {
@@ -193,7 +208,7 @@ void relayTrig(char option) {
   switch (option) {
     case 'A':
       if (myTemp1 > maxDHT1 || myTemp2 > maxDHT2) relayON();
-      else if (myTemp1 < minDHT1 || myTemp2 < minDHT2)relayOFF();
+        else if (myTemp1 < minDHT1 || myTemp2 < minDHT2)relayOFF();
       break;
     case 'B':
       if (myTemp1 > maxDHT1 || myTemp2 > maxDHT2) relayOFF();
@@ -503,6 +518,6 @@ void saveOK() {
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("SAVE CONFIG..");
-  sendDevThreshold();
+  if(useWifi)sendDevThreshold();
   delay(1000);
 }
